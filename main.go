@@ -71,7 +71,7 @@ func main() {
 		ctrl.GetConfigOrDie(),
 		ctrl.Options{
 			Scheme:                 scheme,
-			MetricsBindAddress:     metricsAddr,
+			MetricsBindAddress:     metricsAddr, // metrics暴露的端口
 			Port:                   9443,
 			HealthProbeBindAddress: probeAddr,
 			LeaderElection:         enableLeaderElection,
@@ -83,7 +83,7 @@ func main() {
 	}
 
 	if err = (&controllers.GuestbookReconciler{
-		Client: mgr.GetClient(),
+		Client: mgr.GetClient(), // 给GuestbookReconciler赋值
 		Scheme: mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Guestbook")
