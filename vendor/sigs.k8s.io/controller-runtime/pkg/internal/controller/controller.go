@@ -40,32 +40,43 @@ var _ inject.Injector = &Controller{}
 // Controller implements controller.Controller.
 type Controller struct {
 	// Name is used to uniquely identify a Controller in tracing, logging and monitoring.  Name is required.
+	// Name 用于跟踪、记录和监控中控制器的唯一标识，必填字段
 	Name string
 
 	// MaxConcurrentReconciles is the maximum number of concurrent Reconciles which can be run. Defaults to 1.
+	// 可以运行的最大并发 Reconciles 数量，默认值为1
 	MaxConcurrentReconciles int
 
+	// Reconciler 是一个可以随时调用对象的 Name/Namespace 的函数
+	// 确保系统的状态与对象中指定的状态一致，默认为 DefaultReconcileFunc 函数
 	// Reconciler is a function that can be called at any time with the Name / Namespace of an object and
 	// ensures that the state of the system matches the state specified in the object.
 	// Defaults to the DefaultReconcileFunc.
 	Do reconcile.Reconciler
 
+	// 一旦控制器准备好启动，MakeQueue 就会为这个控制器构造工作队列
 	// MakeQueue constructs the queue for this controller once the controller is ready to start.
 	// This exists because the standard Kubernetes workqueues start themselves immediately, which
 	// leads to goroutine leaks if something calls controller.New repeatedly.
 	MakeQueue func() workqueue.RateLimitingInterface
 
+	// 队列通过监听来自 Infomer 的事件，添加对象键到队列中进行处理
+	// MakeQueue 属性就是来构造这个工作队列的
+	// 也就是前面我们讲解的工作队列，我们将通过这个工作队列来进行消费
 	// Queue is an listeningQueue that listens for events from Informers and adds object keys to
 	// the Queue for processing
 	Queue workqueue.RateLimitingInterface
 
+	// SetFields 用来将依赖关系注入到其他对象，比如 Sources、EventHandlers 以及 Predicates
 	// SetFields is used to inject dependencies into other objects such as Sources, EventHandlers and Predicates
 	// Deprecated: the caller should handle injected fields itself.
 	SetFields func(i interface{}) error
 
+	// 控制器同步信号量
 	// mu is used to synchronize Controller setup
 	mu sync.Mutex
 
+	// 控制器是否已经启动
 	// Started is true if the Controller has been Started
 	Started bool
 
@@ -80,17 +91,24 @@ type Controller struct {
 	// Defaults to 2 minutes if not set.
 	CacheSyncTimeout time.Duration
 
+	// startWatches 维护了一个 sources、handlers 以及 predicates 列表以方便在控制器启动的时候启动
 	// startWatches maintains a list of sources, handlers, and predicates to start when the controller is started.
 	startWatches []watchDescription
 
+	// 日志记录
 	// Log is used to log messages to users during reconciliation, or for example when a watch is started.
 	Log logr.Logger
 
 	// RecoverPanic indicates whether the panic caused by reconcile should be recovered.
 	RecoverPanic bool
+
+	// 上面的结构体就是 controller-runtime 中定义的控制器结构体，我们可以看到结构体中仍然有一个限速的工作队列，
+	// 但是看上去没有资源对象的  Informer 或者 Indexer 的数据，实际上这里是通过下面的 startWatches 属性做了一层封装，
+	// 该属性是一个 watchDescription 队列，一个 watchDescription 包含了所有需要 watch 的信息：
 }
 
 // watchDescription contains all the information necessary to start a watch.
+// watchDescription 包含所有启动 watch 操作所需的信息
 type watchDescription struct {
 	src        source.Source
 	handler    handler.EventHandler
@@ -142,6 +160,9 @@ func (c *Controller) Watch(src source.Source, evthdler handler.EventHandler, prc
 
 	c.Log.Info("Starting EventSource", "source", src)
 	return src.Start(c.ctx, evthdler, c.Queue, prct...)
+
+	// 上面的 Watch 函数可以看到最终是去调用的 Source 这个参数的 Start 函数，Source 是事件的源，
+	// 如对资源对象的 Create、Update、Delete 操作，需要由event.EventHandlers 将 reconcile.Requests 入队列进行处理。
 }
 
 // Start implements controller.Controller.

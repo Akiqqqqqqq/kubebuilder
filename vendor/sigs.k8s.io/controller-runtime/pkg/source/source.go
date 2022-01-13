@@ -54,6 +54,9 @@ const (
 type Source interface {
 	// Start is internal and should be called only by the Controller to register an EventHandler with the Informer
 	// to enqueue reconcile.Requests.
+	// // Start 是一个内部函数
+	// 只应该由 Controller 调用，向 Informer 注册一个 EventHandler
+	// 将 reconcile.Request 放入队列
 	Start(context.Context, handler.EventHandler, workqueue.RateLimitingInterface, ...predicate.Predicate) error
 }
 
@@ -87,9 +90,11 @@ func (ks *kindWithCache) WaitForSync(ctx context.Context) error {
 // Kind is used to provide a source of events originating inside the cluster from Watches (e.g. Pod Create).
 type Kind struct {
 	// Type is the type of object to watch.  e.g. &v1.Pod{}
+	// Type 是 watch 对象的类型，比如 &v1.Pod{}
 	Type client.Object
 
 	// cache used to watch APIs
+	// cache 用于 watch 的 APIs 接口
 	cache cache.Cache
 
 	// started may contain an error if one was encountered during startup. If its closed and does not
@@ -102,14 +107,17 @@ var _ SyncingSource = &Kind{}
 
 // Start is internal and should be called only by the Controller to register an EventHandler with the Informer
 // to enqueue reconcile.Requests.
+// 真正的 Start 函数实现
 func (ks *Kind) Start(ctx context.Context, handler handler.EventHandler, queue workqueue.RateLimitingInterface,
 	prct ...predicate.Predicate) error {
 	// Type should have been specified by the user.
+	// Type 在使用之前必须提前指定
 	if ks.Type == nil {
 		return fmt.Errorf("must specify Kind.Type")
 	}
 
 	// cache should have been injected before Start was called
+	// cache 也应该在调用 Start 之前被注入了
 	if ks.cache == nil {
 		return fmt.Errorf("must call CacheInto on Kind before calling Start")
 	}
@@ -120,6 +128,8 @@ func (ks *Kind) Start(ctx context.Context, handler handler.EventHandler, queue w
 	ks.started = make(chan error)
 	go func() {
 		// Lookup the Informer from the Cache and add an EventHandler which populates the Queue
+		// 从 Cache 中获取 Informer
+		// 并添加一个事件处理程序来添加队列
 		i, err := ks.cache.GetInformer(ctx, ks.Type)
 		if err != nil {
 			kindMatchErr := &meta.NoKindMatchError{}
@@ -139,6 +149,9 @@ func (ks *Kind) Start(ctx context.Context, handler handler.EventHandler, queue w
 	}()
 
 	return nil
+
+	// 从上面的具体实现我们就可以看出来 Controller.Watch 函数就是实现的获取资源对象的 Informer 以及注册事件监听函数。
+	// Informer 是通过 cache 获取的，cache 是在调用 Start 函数之前注入进来的，这里其实我们不用太关心；
 }
 
 func (ks *Kind) String() string {
