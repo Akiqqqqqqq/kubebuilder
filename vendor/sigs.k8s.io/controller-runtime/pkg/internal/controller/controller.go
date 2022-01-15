@@ -14,6 +14,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+// 源码解读：https://blog.51cto.com/u_15127692/2820775
+
 package controller
 
 import (
@@ -61,8 +63,7 @@ type Controller struct {
 	MakeQueue func() workqueue.RateLimitingInterface
 
 	// 队列通过监听来自 Infomer 的事件，添加对象键到队列中进行处理
-	// MakeQueue 属性就是来构造这个工作队列的
-	// 也就是前面我们讲解的工作队列，我们将通过这个工作队列来进行消费
+	// MakeQueue 属性就是来构造这个工作队列的，也就是前面我们讲解的工作队列，我们将通过这个工作队列来进行消费
 	// Queue is an listeningQueue that listens for events from Informers and adds object keys to
 	// the Queue for processing
 	Queue workqueue.RateLimitingInterface
@@ -179,6 +180,7 @@ func (c *Controller) Start(ctx context.Context) error {
 	// Set the internal context.
 	c.ctx = ctx
 
+	// 调用 MakeQueue() 函数生成工作队列
 	c.Queue = c.MakeQueue()
 	go func() {
 		<-ctx.Done()
@@ -195,6 +197,8 @@ func (c *Controller) Start(ctx context.Context) error {
 		// NB(directxman12): launch the sources *before* trying to wait for the
 		// caches to sync so that they have a chance to register their intendeded
 		// caches.
+		// NB(directxman12): 在试图等待缓存同步之前启动 sources
+		// 这样他们有机会注册他们的目标缓存
 		for _, watch := range c.startWatches {
 			c.Log.Info("Starting EventSource", "source", watch.src)
 
@@ -204,6 +208,7 @@ func (c *Controller) Start(ctx context.Context) error {
 		}
 
 		// Start the SharedIndexInformer factories to begin populating the SharedIndexInformer caches
+		// 启动 SharedIndexInformer 工厂，开始填充 SharedIndexInformer 缓存
 		c.Log.Info("Starting Controller")
 
 		for _, watch := range c.startWatches {
@@ -217,6 +222,7 @@ func (c *Controller) Start(ctx context.Context) error {
 				sourceStartCtx, cancel := context.WithTimeout(ctx, c.CacheSyncTimeout)
 				defer cancel()
 
+				// 等待 Informer 同步完成
 				// WaitForSync waits for a definitive timeout, and returns if there
 				// is an error or a timeout
 				if err := syncingSource.WaitForSync(sourceStartCtx); err != nil {
@@ -235,9 +241,11 @@ func (c *Controller) Start(ctx context.Context) error {
 		//
 		// We should never hold watches more than necessary, each watch source can hold a backing cache,
 		// which won't be garbage collected if we hold a reference to it.
+		// 所有的 watches 已经启动，重置
 		c.startWatches = nil
 
 		// Launch workers to process resources
+		// 启动 workers 来处理资源
 		c.Log.Info("Starting workers", "worker count", c.MaxConcurrentReconciles)
 		wg.Add(c.MaxConcurrentReconciles)
 		for i := 0; i < c.MaxConcurrentReconciles; i++ {
@@ -262,6 +270,9 @@ func (c *Controller) Start(ctx context.Context) error {
 	wg.Wait()
 	c.Log.Info("All workers finished")
 	return nil
+
+	// 上面的 Start 函数很简单，和我们之前自定义控制器中启动控制循环比较类似，
+	// 都是先等待资源对象的 Informer 同步完成，然后启动 workers 来处理资源对象，而且 worker 函数都是一样的实现方式
 }
 
 // processNextWorkItem will read a single work item off the workqueue and
@@ -284,6 +295,7 @@ func (c *Controller) processNextWorkItem(ctx context.Context) bool {
 	ctrlmetrics.ActiveWorkers.WithLabelValues(c.Name).Add(1)
 	defer ctrlmetrics.ActiveWorkers.WithLabelValues(c.Name).Add(-1)
 
+	// 调用 reconcileHandler 进行元素处理
 	c.reconcileHandler(ctx, obj)
 	return true
 }
@@ -329,9 +341,11 @@ func (c *Controller) reconcileHandler(ctx context.Context, obj interface{}) {
 
 	// RunInformersAndControllers the syncHandler, passing it the Namespace/Name string of the
 	// resource to be synced.
+	// 调用 Reconciler 函数来处理这个元素，也就是我们真正去编写业务逻辑的地方
 	result, err := c.Reconcile(ctx, req)
 	switch {
 	case err != nil:
+		// 如果业务逻辑处理出错，重新添加到限速队列中去
 		c.Queue.AddRateLimited(req)
 		ctrlmetrics.ReconcileErrors.WithLabelValues(c.Name).Inc()
 		ctrlmetrics.ReconcileTotal.WithLabelValues(c.Name, labelError).Inc()
@@ -341,10 +355,14 @@ func (c *Controller) reconcileHandler(ctx context.Context, obj interface{}) {
 		// along with a non-nil error. But this is intended as
 		// We need to drive to stable reconcile loops before queuing due
 		// to result.RequestAfter
+		// 如果调谐函数 Reconcile 处理结果中包含大于0的 RequeueAfter
+		// 需要注意如果 result.RequeuAfter 与一个非 nil 的错误一起返回，则 result.RequeuAfter 会丢失。
+		// 如果返回的 result.RequeueAfter > 0，则先将元素忘记，然后在 result.RequeueAfter 时间后加入到队列中
 		c.Queue.Forget(obj)
 		c.Queue.AddAfter(req, result.RequeueAfter)
 		ctrlmetrics.ReconcileTotal.WithLabelValues(c.Name, labelRequeueAfter).Inc()
 	case result.Requeue:
+		// 重新加入队列
 		c.Queue.AddRateLimited(req)
 		ctrlmetrics.ReconcileTotal.WithLabelValues(c.Name, labelRequeue).Inc()
 	default:
@@ -353,6 +371,10 @@ func (c *Controller) reconcileHandler(ctx context.Context, obj interface{}) {
 		c.Queue.Forget(obj)
 		ctrlmetrics.ReconcileTotal.WithLabelValues(c.Name, labelSuccess).Inc()
 	}
+
+	// 上面的 reconcileHandler 函数就是我们真正执行元素业务处理的地方，函数中包含了事件处理以及错误处理，
+	// 真正的事件处理是通过 c.Do.Reconcile(req) 暴露给开发者的，所以对于开发者来说，
+	// 只需要在 Reconcile 函数中去处理业务逻辑就可以了。
 }
 
 // GetLogger returns this controller's logger.

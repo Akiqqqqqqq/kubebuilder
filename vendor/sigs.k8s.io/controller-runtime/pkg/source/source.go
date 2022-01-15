@@ -88,6 +88,7 @@ func (ks *kindWithCache) WaitForSync(ctx context.Context) error {
 }
 
 // Kind is used to provide a source of events originating inside the cluster from Watches (e.g. Pod Create).
+// Source的实现类
 type Kind struct {
 	// Type is the type of object to watch.  e.g. &v1.Pod{}
 	// Type 是 watch 对象的类型，比如 &v1.Pod{}
@@ -101,6 +102,9 @@ type Kind struct {
 	// contain an error, startup and syncing finished.
 	started     chan error
 	startCancel func()
+
+	// 使用 Kind 来处理来自集群的事件（如 Pod 创建、Pod 更新、Deployment 更新）。
+	// 使用 Channel 来处理来自集群外部的事件（如 GitHub Webhook 回调、轮询外部 URL）。
 }
 
 var _ SyncingSource = &Kind{}
@@ -108,7 +112,10 @@ var _ SyncingSource = &Kind{}
 // Start is internal and should be called only by the Controller to register an EventHandler with the Informer
 // to enqueue reconcile.Requests.
 // 真正的 Start 函数实现
-func (ks *Kind) Start(ctx context.Context, handler handler.EventHandler, queue workqueue.RateLimitingInterface,
+func (ks *Kind) Start(
+	ctx context.Context,
+	handler handler.EventHandler,
+	queue workqueue.RateLimitingInterface,
 	prct ...predicate.Predicate) error {
 	// Type should have been specified by the user.
 	// Type 在使用之前必须提前指定
@@ -128,8 +135,7 @@ func (ks *Kind) Start(ctx context.Context, handler handler.EventHandler, queue w
 	ks.started = make(chan error)
 	go func() {
 		// Lookup the Informer from the Cache and add an EventHandler which populates the Queue
-		// 从 Cache 中获取 Informer
-		// 并添加一个事件处理程序来添加队列
+		// 从 Cache 中获取 Informer，并添加一个事件处理程序来添加队列
 		i, err := ks.cache.GetInformer(ctx, ks.Type)
 		if err != nil {
 			kindMatchErr := &meta.NoKindMatchError{}

@@ -33,6 +33,7 @@ var _ EventHandler = &EnqueueRequestForObject{}
 // EnqueueRequestForObject enqueues a Request containing the Name and Namespace of the object that is the source of the Event.
 // (e.g. the created / deleted / updated objects Name and Namespace).  handler.EnqueueRequestForObject is used by almost all
 // Controllers that have associated Resources (e.g. CRDs) to reconcile the associated Resource.
+
 // EnqueueRequestForObject 是一个包含了作为事件源的对象的 Name 和 Namespace 的入队列的 Request
 //（例如，created/deleted/updated 对象的 Name 和 Namespace）
 // handler.EnqueueRequestForObject 几乎被所有关联资源（如 CRD）的控制器使用，以协调关联的资源

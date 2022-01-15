@@ -242,6 +242,7 @@ func (blder *Builder) doWatch() error {
 		}
 		allPredicates := append([]predicate.Predicate(nil), blder.globalPredicates...)
 		allPredicates = append(allPredicates, own.predicates...)
+		// 可以看到 Watch 的第一个参数是一个 source.Kind的类型
 		if err := blder.ctrl.Watch(src, hdler, allPredicates...); err != nil {
 			return err
 		}

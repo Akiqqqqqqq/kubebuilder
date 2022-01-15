@@ -34,7 +34,7 @@ var log = logf.RuntimeLog.WithName("source").WithName("EventHandler")
 var _ cache.ResourceEventHandler = EventHandler{}
 
 // EventHandler adapts a handler.EventHandler interface to a cache.ResourceEventHandler interface.
-// EventHandler 实现了 cache.ResourceEventHandler 接口
+// EventHandler 实现了 client-go的cache.ResourceEventHandler 接口
 type EventHandler struct {
 	EventHandler handler.EventHandler
 	Queue        workqueue.RateLimitingInterface
@@ -64,7 +64,7 @@ func (e EventHandler) OnAdd(obj interface{}) {
 	}
 
 	// Invoke create handler
-	// 调用 EventHander 的 Create 函数
+	// 调用 EventHander 的 Create 函数，传入e.Queue
 	e.EventHandler.Create(c, e.Queue)
 }
 
